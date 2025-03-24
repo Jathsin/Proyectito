@@ -1,9 +1,8 @@
-//Builds server
-
 package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -37,49 +36,6 @@ func main() {
 
 }
 
-type Data struct {
-	Identificacion string  `json:"identificacion"`
-	Nombre         string  `json:"nombre"`
-	Latitud        float64 `json:"latitud"`
-	Longitud       float64 `json:"longitud"`
-	Altitud        float64 `json:"altitud"`
-	Srs            string  `json:"srs"`
-	AltNieve       string  `json:"alt_nieve"`
-	DDD            int     `json:"ddd"`
-	DDDStd         int     `json:"dddstd"`
-	DDDx           int     `json:"dddx"`
-	Fhora          string  `json:"fhora"`
-	HR             int     `json:"hr"`
-	Ins            float64 `json:"ins"`
-	Lluv           float64 `json:"lluv"`
-	Pres           float64 `json:"pres"`
-	RadKjM2        string  `json:"rad_kj_m2"`
-	RadWM2         float64 `json:"rad_w_m2"`
-	Rec            string  `json:"rec"`
-	Temp           float64 `json:"temp"`
-	Tmn            float64 `json:"tmn"`
-	Tmx            float64 `json:"tmx"`
-	Ts             float64 `json:"ts"`
-	Tsb            string  `json:"tsb"`
-	Tsmn           string  `json:"tsmn"`
-	Tsmx           string  `json:"tsmx"`
-	Vel            float64 `json:"vel"`
-	Velx           float64 `json:"velx"`
-	Albedo         float64 `json:"albedo"`
-	Difusa         float64 `json:"difusa"`
-	Directa        float64 `json:"directa"`
-	Global         float64 `json:"global"`
-	IrSolar        float64 `json:"ir_solar"`
-	Neta           float64 `json:"neta"`
-	Par            float64 `json:"par"`
-	Tcielo         float64 `json:"tcielo"`
-	Ttierra        float64 `json:"ttierra"`
-	Uvab           float64 `json:"uvab"`
-	Uvb            float64 `json:"uvb"`
-	Uvi            float64 `json:"uvi"`
-	Qdato          int     `json:"qdato"`
-}
-
 func createMux() *http.ServeMux {
 
 	mux := http.NewServeMux()
@@ -93,33 +49,13 @@ func createMux() *http.ServeMux {
 			return
 		}
 
-		//Call AEMET API
-		apiURL := os.Getenv("API_ANTARTIDA")
-		if apiURL == "" {
-			http.Error(w, "API URL not set", http.StatusInternalServerError)
-			return
-		}
-
-		resp, err := http.Get(apiURL)
+		//@TODO: do not use default client!
+		data, err := fetchAPIData[*Antartida]("API_ANTARTIDA", http.DefaultClient)
 		if err != nil {
-			http.Error(w, "Failed request to AMEMET´s API", http.StatusInternalServerError)
-			return
+			http.Error(w, "Failed to fetch dara from API", http.StatusInternalServerError)
 		}
-
-		//Show response to the client
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			http.Error(w, "Failed to read body", http.StatusInternalServerError)
-			return
-		}
-
-		var data Data
-		//@Todo:should manage error here!
-		json.Unmarshal(body, &data)
 
 		w.Header().Set("Content-Type", "json")
-
 		responseData, err := json.Marshal(data)
 		if err != nil {
 			http.Error(w, "Failed to marshal data", http.StatusInternalServerError)
@@ -131,8 +67,37 @@ func createMux() *http.ServeMux {
 			return
 		}
 	})
+
 	return mux
 
 	//Should manage error here? What if the error is in the implementation of the mux?
 
+}
+
+// Makes API reusable using generics
+func fetchAPIData[T any](apiKey string, client *http.Client) (*T, error) {
+
+	var apiURL = os.Getenv(apiKey)
+	if apiURL == "" {
+		return nil, fmt.Errorf("Could not access API Key")
+	}
+
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to fetch data from API: %w", err)
+	}
+
+	//Show response to the client
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Could not access Body: %w", err)
+	}
+
+	var data T
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		return nil, fmt.Errorf("JSON could not be unmarshalled: %w", err)
+	}
+	return &data, nil
 }
